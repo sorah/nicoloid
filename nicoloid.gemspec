@@ -8,8 +8,8 @@ Gem::Specification.new do |s|
   s.authors     = ["Shota Fukumori (sora_h)"]
   s.email       = ["sorah@tubusu.net"]
   s.homepage    = ""
-  s.summary     = %q{TODO: Write a gem summary}
-  s.description = %q{TODO: Write a gem description}
+  s.summary     = "Download video from nicovideo and convert to mp3"
+  s.description = "nicoloid downloads video from nicovideo.jp, and convert videos to mp3 using ffmpeg."
 
   s.rubyforge_project = "nicoloid"
 
