@@ -59,7 +59,7 @@ class Nicoloid
                        "がくっぽいど" => "神威がくぽ",
                        "megpoid" => "GUMI"}
 
-    VOCALOIDS_SORTING = {"初音ミク" => "Hatune Miku",
+    VOCALOIDS_SORTING = {"初音ミク" => "Hatsune Miku",
                          "鏡音リン" => "Kagamine Rin",
                          "鏡音レン" => "Kagamine Ren",
                          "巡音ルカ" => "Megurine Ruka",
@@ -85,8 +85,9 @@ class Nicoloid
 
       ffmpeg = config["ffmpeg"] || "ffmpeg"
 
-      tmpdir = File.expand_path(config["directories"]["temporary"])
+      cache_dir = File.expand_path(config["directories"]["cache"])
       output_dir = File.expand_path(config["directories"]["output"])
+      tmpdir = File.expand_path(config["directories"]["temporary"])
 
       if File.exist?(tmpdir)
         puts "Wiping tmp directory"
@@ -140,10 +141,10 @@ class Nicoloid
 
       videos[0..max].each_with_index do |v, i|
         puts "#{i+1}. (#{v.id}) #{v.title}"
-        (puts "  Skipped"; next) if v.type == :swf || deleted.include?(v.id)
+        (puts "  Skipped"; sleep 7; next) if v.type == :swf || deleted.include?(v.id)
         basename = "#{i+1}_#{v.id}_#{v.title}.mp3"
         filename = "#{output_dir}/#{basename}"
-        tmpname = "#{tmpdir}/#{v.id}.#{v.type}"
+        videoname = "#{cache_dir}/#{v.id}.#{v.type}"
         thumbname = "#{tmpdir}/#{v.id}.jpg"
         cookie_jar = "#{tmpdir}/cookie.txt"
 
@@ -154,8 +155,8 @@ class Nicoloid
           FileUtils.mv(exist_in_tmp, filename)
           next
         else
-
           puts_with_result "Saving video... " do
+            break "already done!" unless Dir["#{cache_dir}/#{v.id}.*"].empty?
             if (`curl --help` rescue nil)
               a = v.get_video_by_other
               cookies = a[:cookie]
@@ -163,15 +164,17 @@ class Nicoloid
 
               open(cookie_jar, "w") do |io|
                 io.puts cookies.map { |cookie|
-                  [cookie.domain, "TRUE", cookie.path, cookie.secure.inspect.upcase, cookie.expires.to_i, cookie.name, cookie.value].join("\t")
+                  [cookie.domain, "TRUE", cookie.path,
+                   cookie.secure.inspect.upcase, cookie.expires.to_i,
+                   cookie.name, cookie.value].join("\t")
                 }.join("\n")
               end
 
               puts
-              system "curl", "-#", "-o", tmpname, "-b", cookie_jar, url
+              system "curl", "-#", "-o", videoname, "-b", cookie_jar, url
               ""
             else
-              open(tmpname,"wb") do |f|
+              open(videoname,"wb") do |f|
                 f.print v.get_video
               end
               "done!"
@@ -180,7 +183,7 @@ class Nicoloid
 
           puts_with_result "--------- Convert ---------" do
             puts
-            unless system(ffmpeg, "-ab", "327680", "-i", tmpname, filename)
+            unless system(ffmpeg, "-loglevel", "quiet",  "-i", videoname, "-ab", "320k",  filename)
               abort "Error..."
             end
             "---------  Done!  ---------"
@@ -197,7 +200,7 @@ class Nicoloid
           end
 
           puts_with_result "  Exporting thumbnail... " do
-            system("#{ffmpeg}", "-ss", "10", "-vframes", "50", "-i", tmpname, "-f", "image2", thumbname, :out => File::NULL, :err => File::NULL)
+            system(ffmpeg, "-ss", "10", "-vframes", "50", "-i", videoname, "-f", "image2", thumbname, :out => File::NULL, :err => File::NULL)
             "done!"
           end
 
@@ -206,6 +209,7 @@ class Nicoloid
             tag = file.id3v2_tag
             tag.artist = artists
             tag.title = v.title
+            tag.album = v.title
 
             cover = TagLib::ID3v2::AttachedPictureFrame.new
             cover.mime_type = "image/jpeg"
@@ -225,7 +229,7 @@ class Nicoloid
           end
         end
         print "Waiting"
-        10.times {print "."; sleep 1}
+        5.times {print "."; sleep 1}
         puts "\n\n"
       end
 
@@ -238,7 +242,7 @@ class Nicoloid
 
 
       puts "Wiping tmp directory"
-      FileUtils.remove_entry_secure(File.expand_path(config["tmpdir"]))
+      FileUtils.remove_entry_secure(tmpdir)
 
       puts "Exiting...."
     end
