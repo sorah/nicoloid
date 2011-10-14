@@ -192,8 +192,15 @@ class Nicoloid
           artists=artist_sorting=nil
           puts_with_result "  Detecting Artists... " do
             vt = v.title
-            artists = VOCALOIDS.inject([]){|r,i| vt.include?(i) ? r << i : r } \
-                               .map{|i| VOCALOIDS_ALIAS.key?(i) ? VOCALOIDS_ALIAS[i] : i }
+
+            artists = []
+
+            if artists.empty?
+              artists = VOCALOIDS.inject([]){|r,i| vt.include?(i) ? r << i : r } \
+                                 .map{|i| VOCALOIDS_ALIAS.key?(i) ? VOCALOIDS_ALIAS[i] : i } \
+                                 .uniq
+            end
+
             artist_sorting = artists.map{|i| VOCALOIDS_SORTING[i] || i}.join(', ')
             artists = artists.join(', ')
             ["done!", "  #{artists}", "  #{artist_sorting}"].join("\n")
@@ -234,7 +241,7 @@ class Nicoloid
       end
 
       puts "Writing files..."
-      open("#{File.expand_path(config["mp3dir"])}/nicoloid_files","w") do |f|
+      open("#{output_dir}/nicoloid_files","w") do |f|
         f.print Dir.glob("#{File.expand_path(config["mp3dir"])}/*.mp3") \
                    .map{|f| f.gsub(/.+?\/[0-9]+_(.+[0-9]+)_.+\.mp3$/){$1} } \
                    .join("\n")
