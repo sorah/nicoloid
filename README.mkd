@@ -1,4 +1,4 @@
-# Nicoloid -- Automatic download and convert to mp3 in Top Nicovideo Ranking
+# Nicoloid - Download video from nicovideo and convert to mp3
 
 __OWN YOUR RISK__
 
@@ -10,11 +10,12 @@ __OWN YOUR RISK__
 ## Requirement
 
 * Ruby 1.9+ (Ruby 1.9.2+ is supported)
+* ffmpeg
 
 ## How to use
 
-1. write config (yaml)
-2. run `ruby /path/to/nicomp3.rb /path/to/config_file`
+1. write config in yaml, format is below
+2. run `nicoloid /path/to/config.yml`
 
 ## Configuration
 
@@ -28,17 +29,17 @@ __OWN YOUR RISK__
 
     ffmpeg: path_to_ffmpeg
 
-    # If you use ranking as source
+    # if you use ranking as source
     source:
       from: ranking
       method: ranking_method
       span: ranking_span
       category: ranking_category
 
-    # If you use mylist as source
-    # (TBD)
+    # if you use mylist as source
+    # (tbd)
 
-    # The followings are optional.
+    # the followings are optional.
 
     proxy:
       host: proxy_host
