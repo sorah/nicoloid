@@ -1,0 +1,94 @@
+# Nicoloid -- Automatic download and convert to mp3 in Top Nicovideo Ranking
+
+__OWN YOUR RISK__
+
+## Note
+
+* This tool is optimized for VOCALOID.
+* If video name contains VOCALOID names, this tool will put to artist tag in ID3.
+
+## Requirement
+
+* Ruby 1.9+ (Ruby 1.9.2+ is supported)
+
+## How to use
+
+1. write config (yaml)
+2. run `ruby /path/to/nicomp3.rb /path/to/config_file`
+
+## Configuration
+
+    account:
+      mail: your_mail
+      password: your_password
+
+    directories:
+      temporary: temporary_directory
+      output: mp3_directory
+
+    ffmpeg: path_to_ffmpeg
+
+    # If you use ranking as source
+    source:
+      from: ranking
+      method: ranking_method
+      span: ranking_span
+      category: ranking_category
+
+    # If you use mylist as source
+    # (TBD)
+
+    # The followings are optional.
+
+    proxy:
+      host: proxy_host
+      port: proxy_port
+
+    limit: limit_count_of_videos
+
+### Note
+
+#### output directory
+
+* __output directory will be wiped__ all its including files before converting. please move file which you need.
+* output mp3-s will be saved in output directory.
+
+#### Temporary directory
+
+* it will be created automatically before converting, and deleted after converting.
+
+#### What's a ranking_method and span?
+
+* Niconico ranking url includes method, span and category.
+
+http://www.nicovideo.jp/ranking/__METHOD__/__SPAN__/__CATEGORY__
+
+Example: <http://www.nicovideo.jp/ranking/fav/daily/vocaloid>
+
+    source:
+      method: fav
+      span: daily
+      category: vocaloid
+
+## License
+
+MIT Licence
+
+(c) Shota Fukumori 2011
+
+>  Permission is hereby granted, free of charge, to any person obtaining a copy
+>    of this software and associated documentation files (the "Software"), to deal
+>    in the Software without restriction, including without limitation the rights
+>    to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+>    copies of the Software, and to permit persons to whom the Software is
+>    furnished to do so, subject to the following conditions:
+>    The above copyright notice and this permission notice shall be included in
+>    all copies or substantial portions of the Software.
+>    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+>    IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+>    FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+>      AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+>      LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+>    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+>      THE SOFTWARE.
+
