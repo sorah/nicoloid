@@ -245,4 +245,3 @@ class Nicoloid
   end
 end
 
-Nicoloid.run ARGV
