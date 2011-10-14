@@ -95,26 +95,20 @@ class Nicoloid
       end
       FileUtils.mkdir(tmpdir)
 
-      deleted = []
+      converted = []
       if File.exist?(output_dir)
         puts "Wiping mp3 directory"
 
-        nicoloid_files = "#{output_dir}/nicoloid_files"
-        nicoloid_deleted = "#{output_dir}/nicomp3_deleted"
+        nicoloid_converted = "#{output_dir}/nicoloid_converted"
 
-        if File.exist?(nicoloid_files)
-           deleted = open(nicoloid_files){|f|f.readlines}.map(&:chomp) - \
-                      Dir.glob("#{File.expand_path(config["mp3dir"])}/*.mp3") \
-                          .map{|f| f.gsub(/.+?\/[0-9]+_(.+[0-9]+)_.+\.mp3$/){$1} } \
+        if File.exist?(nicoloid_converted)
+          converted =  open(nicoloid_converted,&:readlines).map(&:chomp)
         end
 
-        if File.exist?(nicoloid_deleted)
-          deleted << open(nicoloid_deleted,&:readlines).map(&:chomp)
-        end
-
-        open(nicoloid_deleted,"w"){|f| f.print deleted.join("\n") }
-
-        FileUtils.mv Dir.glob("#{output_dir}/*.mp3"),File.expand_path(tmpdir)
+        #FileUtils.mv Dir.glob("#{output_dir}/*.mp3"),File.expand_path(tmpdir)
+        # Dir["#{output_dir}/*.mp3"].reject do |mp3|
+        #   converted.include? mp3.scan(/^#{Regexp.escape(output_dir)}\/\d+?_(.+?)_(.+?)\.mp3$/)[0][0]
+        # end
       end
 
       nv.agent.set_proxy(config["proxy"]["host"],config["proxy"]["port"]) if config["proxy"]
@@ -141,115 +135,122 @@ class Nicoloid
 
       videos[0..max].each_with_index do |v, i|
         puts "#{i+1}. (#{v.id}) #{v.title}"
-        (puts "  Skipped"; sleep 7; next) if v.type == :swf || deleted.include?(v.id)
-        basename = "#{i+1}_#{v.id}_#{v.title}.mp3"
-        filename = "#{output_dir}/#{basename}"
-        videoname = "#{cache_dir}/#{v.id}.#{v.type}"
-        thumbname = "#{tmpdir}/#{v.id}.jpg"
-        cookie_jar = "#{tmpdir}/cookie.txt"
+        begin
+          (puts "  Skipped"; next) if converted.include?(v.id)
+          (puts "  Skipped"; sleep 7; next) if v.type == :swf
+          basename = "#{i+1}_#{v.id}_#{v.title}.mp3"
+          filename = "#{output_dir}/#{basename}"
+          videoname = "#{cache_dir}/#{v.id}.#{v.type}"
+          thumbname = "#{tmpdir}/#{v.id}.jpg"
+          cookie_jar = "#{tmpdir}/cookie.txt"
 
-        exist_in_tmp = Dir.glob("#{tmpdir}/*_#{v.id}_*.mp3")[0]
+          exist_in_tmp = Dir.glob("#{tmpdir}/*_#{v.id}_*.mp3")[0]
 
-        if exist_in_tmp
-          puts "  Already converted. Skipping..."
-          FileUtils.mv(exist_in_tmp, filename)
-          next
-        else
-          puts_with_result "Saving video... " do
-            break "already done!" unless Dir["#{cache_dir}/#{v.id}.*"].empty?
-            if (`curl --help` rescue nil)
-              a = v.get_video_by_other
-              cookies = a[:cookie]
-              url = a[:url]
+          if exist_in_tmp
+            puts "  Already converted. Skipping..."
+            FileUtils.mv(exist_in_tmp, filename)
+            next
+          else
+            puts_with_result "Saving video... " do
+              break "already done!" unless Dir["#{cache_dir}/#{v.id}.*"].empty?
+              if (`curl --help` rescue nil)
+                a = v.get_video_by_other
+                cookies = a[:cookie]
+                url = a[:url]
 
-              open(cookie_jar, "w") do |io|
-                io.puts cookies.map { |cookie|
-                  [cookie.domain, "TRUE", cookie.path,
-                   cookie.secure.inspect.upcase, cookie.expires.to_i,
-                   cookie.name, cookie.value].join("\t")
-                }.join("\n")
+                open(cookie_jar, "w") do |io|
+                  io.puts cookies.map { |cookie|
+                    [cookie.domain, "TRUE", cookie.path,
+                     cookie.secure.inspect.upcase, cookie.expires.to_i,
+                     cookie.name, cookie.value].join("\t")
+                  }.join("\n")
+                end
+
+                puts
+                system "curl", "-#", "-o", videoname, "-b", cookie_jar, url
+                ""
+              else
+                open(videoname,"wb") do |f|
+                  f.print v.get_video
+                end
+                "done!"
               end
+            end
 
+            puts_with_result "--------- Convert ---------" do
               puts
-              system "curl", "-#", "-o", videoname, "-b", cookie_jar, url
-              ""
-            else
-              open(videoname,"wb") do |f|
-                f.print v.get_video
+              unless system(ffmpeg, "-loglevel", "quiet",  "-i", videoname, "-ab", "320k",  filename)
+                abort "Error..."
               end
+              "---------  Done!  ---------"
+            end
+
+            artists=artist_sorting=nil
+            puts_with_result "  Detecting Artists... " do
+              vt = v.title
+
+              artists = v.tags.select{|tag| VOCALOIDS.include?(tag) }
+
+              if artists.empty?
+                artists = VOCALOIDS.inject([]){|r,i| vt.include?(i) ? r << i : r }
+              end
+
+              artists.map!{|i| VOCALOIDS_ALIAS.key?(i) ? VOCALOIDS_ALIAS[i] : i }
+              artists.uniq!
+
+              artist_sorting = artists.map{|i| VOCALOIDS_SORTING[i] || i}.join(', ')
+              artists = artists.join(', ')
+              ["done!", "  #{artists}", "  #{artist_sorting}"].join("\n")
+            end
+
+            puts_with_result "  Exporting thumbnail... " do
+              system(ffmpeg, "-ss", "10", "-vframes", "50", "-i", videoname, "-f", "image2", thumbname, :out => File::NULL, :err => File::NULL)
+              "done!"
+            end
+
+            puts_with_result "  Setting ID3 Tags... " do
+              file = TagLib::MPEG::File.new(filename)
+              tag = file.id3v2_tag
+              tag.artist = artists
+              tag.title = v.title
+              tag.album = v.title
+
+              cover = TagLib::ID3v2::AttachedPictureFrame.new
+              cover.mime_type = "image/jpeg"
+              cover.description = "cover"
+              cover.type = TagLib::ID3v2::AttachedPictureFrame::FrontCover
+              cover.picture = File.open(thumbname, "rb").read
+
+              sort = TagLib::ID3v2::TextIdentificationFrame.new("TSOP",TagLib::String::UTF8)
+              sort.text = artist_sorting
+
+              tag.add_frame(cover)
+              tag.add_frame(sort)
+
+              file.save
+
               "done!"
             end
           end
-
-          puts_with_result "--------- Convert ---------" do
-            puts
-            unless system(ffmpeg, "-loglevel", "quiet",  "-i", videoname, "-ab", "320k",  filename)
-              abort "Error..."
-            end
-            "---------  Done!  ---------"
+        rescue Exception => e
+          [videoname,filename,tmpdir].each do |f|
+            FileUtils.remove_entry_secure f if File.exist?(f)
           end
-
-          artists=artist_sorting=nil
-          puts_with_result "  Detecting Artists... " do
-            vt = v.title
-
-            artists = []
-
-            if artists.empty?
-              artists = VOCALOIDS.inject([]){|r,i| vt.include?(i) ? r << i : r } \
-                                 .map{|i| VOCALOIDS_ALIAS.key?(i) ? VOCALOIDS_ALIAS[i] : i } \
-                                 .uniq
-            end
-
-            artist_sorting = artists.map{|i| VOCALOIDS_SORTING[i] || i}.join(', ')
-            artists = artists.join(', ')
-            ["done!", "  #{artists}", "  #{artist_sorting}"].join("\n")
-          end
-
-          puts_with_result "  Exporting thumbnail... " do
-            system(ffmpeg, "-ss", "10", "-vframes", "50", "-i", videoname, "-f", "image2", thumbname, :out => File::NULL, :err => File::NULL)
-            "done!"
-          end
-
-          puts_with_result "  Setting ID3 Tags... " do
-            file = TagLib::MPEG::File.new(filename)
-            tag = file.id3v2_tag
-            tag.artist = artists
-            tag.title = v.title
-            tag.album = v.title
-
-            cover = TagLib::ID3v2::AttachedPictureFrame.new
-            cover.mime_type = "image/jpeg"
-            cover.description = "cover"
-            cover.type = TagLib::ID3v2::AttachedPictureFrame::FrontCover
-            cover.picture = File.open(thumbname, "rb").read
-
-            sort = TagLib::ID3v2::TextIdentificationFrame.new("TSOP",TagLib::String::UTF8)
-            sort.text = artist_sorting
-
-            tag.add_frame(cover)
-            tag.add_frame(sort)
-
-            file.save
-
-            "done!"
+          raise e
+        else
+          converted << v.id
+          open(nicoloid_converted,"w") do |f|
+            f.print converted.join("\n")
           end
         end
+
         print "Waiting"
         5.times {print "."; sleep 1}
         puts "\n\n"
       end
 
-      puts "Writing files..."
-      open("#{output_dir}/nicoloid_files","w") do |f|
-        f.print Dir.glob("#{File.expand_path(config["mp3dir"])}/*.mp3") \
-                   .map{|f| f.gsub(/.+?\/[0-9]+_(.+[0-9]+)_.+\.mp3$/){$1} } \
-                   .join("\n")
-      end
-
-
       puts "Wiping tmp directory"
-      FileUtils.remove_entry_secure(tmpdir)
+      FileUtils.remove_entry_secure tmpdir
 
       puts "Exiting...."
     end
