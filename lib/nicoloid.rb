@@ -28,6 +28,7 @@ require 'niconico'
 require 'yaml'
 require 'fileutils'
 require 'taglib'
+require 'termcolor'
 
 frame_factory = TagLib::ID3v2::FrameFactory.instance
 frame_factory.default_text_encoding = TagLib::String::UTF8
@@ -52,6 +53,7 @@ class Nicoloid
                    神威がくぽ
                    がくぽ
                    VY1
+                   歌愛ユキ
                  )
     VOCALOIDS_ALIAS = {"Megpoid" => "GUMI",
                        "めぐっぽいど" => "GUMI",
@@ -68,12 +70,13 @@ class Nicoloid
                          "重音テト" => "Kasane Teto",
                          "GUMI" => "Gumi",
                          "神威がくぽ" => "Kamui Gakupo",
-                         "VY1" => "VY1"}
+                         "VY1" => "VY1",
+                         "歌愛ユキ" => "Kaai Yuki"}
 
   class << self
-    def puts_with_result(str)
-      print str
-      puts yield
+    def puts_progress(str)
+      puts "<bold><blue>=&gt;</blue> <white>#{str}</white></bold>".termcolor
+      yield
     end
 
     def run(argv)
@@ -90,15 +93,12 @@ class Nicoloid
       tmpdir = File.expand_path(config["directories"]["temporary"])
 
       if File.exist?(tmpdir)
-        puts "Wiping tmp directory"
         FileUtils.remove_entry_secure(tmpdir)
       end
       FileUtils.mkdir(tmpdir)
 
       converted = []
       if File.exist?(output_dir)
-        puts "Wiping mp3 directory"
-
         nicoloid_converted = "#{output_dir}/nicoloid_converted"
 
         if File.exist?(nicoloid_converted)
@@ -109,14 +109,15 @@ class Nicoloid
         # Dir["#{output_dir}/*.mp3"].reject do |mp3|
         #   converted.include? mp3.scan(/^#{Regexp.escape(output_dir)}\/\d+?_(.+?)_(.+?)\.mp3$/)[0][0]
         # end
+      else
+        FileUtils.mkdir output_dir
       end
 
       nv.agent.set_proxy(config["proxy"]["host"],config["proxy"]["port"]) if config["proxy"]
 
-      max = config["max"] ? config["max"].to_i : 10
+      max = config["limit"] ? config["limit"].to_i : 10
 
-      puts "Loading list..."
-      puts
+      puts "<bold><blue>=&gt;</blue> <white>Loading list...</white></bold>".termcolor
 
       videos = []
 
@@ -133,110 +134,115 @@ class Nicoloid
         warn "WARNING: source name is wrong or not supported. you gave #{config["source"]["from"]} as source name."
       end
 
-      videos[0..max].each_with_index do |v, i|
-        puts "#{i+1}. (#{v.id}) #{v.title}"
+      videos[0...max].each_with_index do |v, i|
+        puts "<bold><white>-- #{i+1}. (#{v.id}) #{v.title}</white><bold>".termcolor
         begin
-          (puts "  Skipped"; next) if converted.include?(v.id)
-          (puts "  Skipped"; sleep 7; next) if v.type == :swf
+          skip_message = "<bold><green>=&gt;</green> <white>Skipped</white></bold>".termcolor
+          (puts skip_message.termcolor; next) if converted.include?(v.id)
+          (puts skip_message; sleep 7; next) if v.type == :swf
           basename = "#{i+1}_#{v.id}_#{v.title}.mp3"
           filename = "#{output_dir}/#{basename}"
           videoname = "#{cache_dir}/#{v.id}.#{v.type}"
           thumbname = "#{tmpdir}/#{v.id}.jpg"
           cookie_jar = "#{tmpdir}/cookie.txt"
 
-          exist_in_tmp = Dir.glob("#{tmpdir}/*_#{v.id}_*.mp3")[0]
-
-          if exist_in_tmp
-            puts "  Already converted. Skipping..."
-            FileUtils.mv(exist_in_tmp, filename)
-            next
-          else
-            puts_with_result "Saving video... " do
-              break "already done!" unless Dir["#{cache_dir}/#{v.id}.*"].empty?
-              if (`curl --help` rescue nil)
-                a = v.get_video_by_other
-                cookies = a[:cookie]
-                url = a[:url]
-
-                open(cookie_jar, "w") do |io|
-                  io.puts cookies.map { |cookie|
-                    [cookie.domain, "TRUE", cookie.path,
-                     cookie.secure.inspect.upcase, cookie.expires.to_i,
-                     cookie.name, cookie.value].join("\t")
-                  }.join("\n")
-                end
-
-                puts
-                system "curl", "-#", "-o", videoname, "-b", cookie_jar, url
-                ""
-              else
-                open(videoname,"wb") do |f|
-                  f.print v.get_video
-                end
-                "done!"
-              end
+          video_downloaded = false
+          puts_progress "Downloading video" do
+            unless Dir["#{cache_dir}/#{v.id}.*"].empty?
+              puts "<green>=&gt;</green> <white>Using from cache</white>".termcolor
+              break
             end
+            puts "<bold><red>=&gt;</red> <white>Seems economy</white></bold>".termcolor if v.economy?
+            if (`curl --help` rescue nil)
+              a = v.get_video_by_other
+              cookies = a[:cookie]
+              url = a[:url]
 
-            puts_with_result "--------- Convert ---------" do
-              puts
-              unless system(ffmpeg, "-loglevel", "quiet",  "-i", videoname, "-ab", "320k",  filename)
-                abort "Error..."
-              end
-              "---------  Done!  ---------"
-            end
-
-            artists=artist_sorting=nil
-            puts_with_result "  Detecting Artists... " do
-              vt = v.title
-
-              artists = v.tags.select{|tag| VOCALOIDS.include?(tag) }
-
-              if artists.empty?
-                artists = VOCALOIDS.inject([]){|r,i| vt.include?(i) ? r << i : r }
+              open(cookie_jar, "w") do |io|
+                io.puts cookies.map { |cookie|
+                  [cookie.domain, "TRUE", cookie.path,
+                   cookie.secure.inspect.upcase, cookie.expires.to_i,
+                   cookie.name, cookie.value].join("\t")
+                }.join("\n")
               end
 
-              artists.map!{|i| VOCALOIDS_ALIAS.key?(i) ? VOCALOIDS_ALIAS[i] : i }
-              artists.uniq!
+              unless system("curl", "-#", "-o", videoname, "-b", cookie_jar, url)
+                puts "<bold><red>=&gt;</red> <white>Failed...</white></bold>".termcolor
+              end
+            else
+              puts "<bold><red>=&gt;</red> <white>if you have a curl, you can download videos with progress bar.</white></bold>".termcolor
+              open(videoname,"wb") do |f|
+                f.print v.get_video
+              end
+            end
+          end
+          video_downloaded = true
 
-              artist_sorting = artists.map{|i| VOCALOIDS_SORTING[i] || i}.join(', ')
-              artists = artists.join(', ')
-              ["done!", "  #{artists}", "  #{artist_sorting}"].join("\n")
+          puts_progress "Converting to mp3" do
+            unless system(ffmpeg, "-loglevel", "quiet", "-i", videoname, "-ab", "320k",  filename)
+              puts "<bold><red>=&gt;</red> <white>Failed...</white></bold>".termcolor
+              exit 1
+            end
+          end
+
+          artists=artist_sorting=nil
+          puts_progress "Detecting artists" do
+            vt = v.title
+
+            artists = v.tags.select{|tag| VOCALOIDS.include?(tag) }
+
+            if artists.empty?
+              puts "<green>=&gt;</green> <white>Detection by tags failed. try detecting from the title...</white>".termcolor
+              artists = VOCALOIDS.inject([]){|r,i| vt.include?(i) ? r << i : r }
             end
 
-            puts_with_result "  Exporting thumbnail... " do
-              system(ffmpeg, "-ss", "10", "-vframes", "50", "-i", videoname, "-f", "image2", thumbname, :out => File::NULL, :err => File::NULL)
-              "done!"
+            artists.map!{|i| VOCALOIDS_ALIAS.key?(i) ? VOCALOIDS_ALIAS[i] : i }
+            artists.uniq!
+
+            artist_sorting = artists.map{|i| VOCALOIDS_SORTING[i] || i}.join(', ')
+            artists = artists.join(', ')
+
+            puts
+            puts "  #{artists}"
+            puts "  #{artist_sorting}"
+            puts
+          end
+
+          puts_progress "Exporting thumbnail" do
+            unless system(ffmpeg, "-loglevel", "quiet", "-i", videoname, *%w(-f image2 -vframes 1 -ss 10 -an -deinterlace), thumbname)
+              puts "<bold><red>=&gt;</red> <white>Failed...</white></bold>".termcolor
+              exit 1
             end
+          end
 
-            puts_with_result "  Setting ID3 Tags... " do
-              file = TagLib::MPEG::File.new(filename)
-              tag = file.id3v2_tag
-              tag.artist = artists
-              tag.title = v.title
-              tag.album = v.title
+          puts_progress "Setting ID3 Tags..." do
+            file = TagLib::MPEG::File.new(filename)
+            tag = file.id3v2_tag
+            tag.artist = artists
+            tag.title = v.title
+            tag.album = v.title
 
-              cover = TagLib::ID3v2::AttachedPictureFrame.new
-              cover.mime_type = "image/jpeg"
-              cover.description = "cover"
-              cover.type = TagLib::ID3v2::AttachedPictureFrame::FrontCover
-              cover.picture = File.open(thumbname, "rb").read
+            cover = TagLib::ID3v2::AttachedPictureFrame.new
+            cover.mime_type = "image/jpeg"
+            cover.description = "cover"
+            cover.type = TagLib::ID3v2::AttachedPictureFrame::FrontCover
+            cover.picture = File.open(thumbname, "rb").read
 
-              sort = TagLib::ID3v2::TextIdentificationFrame.new("TSOP",TagLib::String::UTF8)
-              sort.text = artist_sorting
+            sort = TagLib::ID3v2::TextIdentificationFrame.new("TSOP",TagLib::String::UTF8)
+            sort.text = artist_sorting
 
-              tag.add_frame(cover)
-              tag.add_frame(sort)
+            tag.add_frame(cover)
+            tag.add_frame(sort)
 
-              file.save
-
-              "done!"
-            end
+            file.save
           end
         rescue Exception => e
-          [videoname,filename,tmpdir].each do |f|
+          files = [filename,tmpdir]
+          files << videoname unless video_downloaded
+          files.each do |f|
             FileUtils.remove_entry_secure f if File.exist?(f)
           end
-          raise e
+          raise e unless e.class == Interrupt
         else
           converted << v.id
           open(nicoloid_converted,"w") do |f|
@@ -244,15 +250,16 @@ class Nicoloid
           end
         end
 
-        print "Waiting"
-        5.times {print "."; sleep 1}
-        puts "\n\n"
+        puts_progress "Wait..." do
+          5.times {print "."; sleep 1}
+          puts
+          puts
+        end
       end
 
-      puts "Wiping tmp directory"
-      FileUtils.remove_entry_secure tmpdir
-
-      puts "Exiting...."
+      puts_progress "Removing temporary directory" do
+        FileUtils.remove_entry_secure tmpdir
+      end
     end
   end
 end
