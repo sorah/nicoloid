@@ -104,11 +104,6 @@ class Nicoloid
         if File.exist?(nicoloid_converted)
           converted =  open(nicoloid_converted,&:readlines).map(&:chomp)
         end
-
-        #FileUtils.mv Dir.glob("#{output_dir}/*.mp3"),File.expand_path(tmpdir)
-        # Dir["#{output_dir}/*.mp3"].reject do |mp3|
-        #   converted.include? mp3.scan(/^#{Regexp.escape(output_dir)}\/\d+?_(.+?)_(.+?)\.mp3$/)[0][0]
-        # end
       else
         FileUtils.mkdir output_dir
       end
