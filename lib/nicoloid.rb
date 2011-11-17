@@ -75,7 +75,7 @@ class Nicoloid
 
   class << self
     def puts_progress(str)
-      puts "<bold><blue>=&gt;</blue> <white>#{str}</white></bold>".termcolor
+      puts "<bold><blue> *</blue> <white>#{str}</white></bold>".termcolor
       yield
     end
 
@@ -120,23 +120,31 @@ class Nicoloid
       when nil, "ranking"
         config["source"]["category"] ||= config["source"]["category"].to_sym \
                                      ||  :vocaloid
-        %w(method span).each do |k|
-          config["source"][k] = config["source"][k].to_sym if config["source"][k]
+        %w(method span category).each do |k|
+          config["source"][k.to_sym] = config["source"][k].to_sym if config["source"][k]
         end
 
         videos = nv.ranking(config["source"]["category"], config["source"])
+      when "vocaran"
+        latest_vocaran = nv.mylist(9352163)[-1]
+        if /(PL|ＰＬ) ?[:：] ?mylist\/(\d+)/ =~ latest_vocaran.description
+          mylist_id = $2
+          videos = nv.mylist(mylist_id)
+          sleep 1
+        else
+          warn "<bold><red>=&gt;</red> <white>Failed to detect mylist</white></bold>".termcolor
+        end
       else
         warn "WARNING: source name is wrong or not supported. you gave #{config["source"]["from"]} as source name."
       end
 
       videos[0...max].each_with_index do |v, i|
-        puts "<bold><white>-- #{i+1}. (#{v.id}) #{v.title}</white><bold>".termcolor
+        puts "<bold><blue>=&gt;</blue> <white>#{i+1}. (#{v.id}) #{v.title}</white><bold>".termcolor
         begin
-          skip_message = "<bold><green>=&gt;</green> <white>Skipped</white></bold>".termcolor
+          skip_message = "<bold><green> *</green> <white>Skipped</white></bold>".termcolor
           (puts skip_message.termcolor; next) if converted.include?(v.id)
           (puts skip_message; sleep 7; next) if v.type == :swf
-          basename = "#{i+1}_#{v.id}_#{v.title}.mp3"
-          filename = "#{output_dir}/#{basename}"
+
           videoname = "#{cache_dir}/#{v.id}.#{v.type}"
           thumbname = "#{tmpdir}/#{v.id}.jpg"
           cookie_jar = "#{tmpdir}/cookie.txt"
@@ -144,10 +152,10 @@ class Nicoloid
           video_downloaded = false
           puts_progress "Downloading video" do
             unless Dir["#{cache_dir}/#{v.id}.*"].empty?
-              puts "<green>=&gt;</green> <white>Using from cache</white>".termcolor
+              puts "<green> *</green> <white>Using from cache</white>".termcolor
               break
             end
-            puts "<bold><red>=&gt;</red> <white>Seems economy</white></bold>".termcolor if v.economy?
+            puts "<bold><red> *</red> <white>Seems economy</white></bold>".termcolor if v.economy?
             if (`curl --help` rescue nil)
               a = v.get_video_by_other
               cookies = a[:cookie]
@@ -165,7 +173,7 @@ class Nicoloid
                 puts "<bold><red>=&gt;</red> <white>Failed...</white></bold>".termcolor
               end
             else
-              puts "<bold><red>=&gt;</red> <white>if you have a curl, you can download videos with progress bar.</white></bold>".termcolor
+              puts "<bold><red> *</red> <white>if you have a curl, you can download videos with progress bar.</white></bold>".termcolor
               open(videoname,"wb") do |f|
                 f.print v.get_video
               end
@@ -173,8 +181,19 @@ class Nicoloid
           end
           video_downloaded = true
 
+          filename = nil
           puts_progress "Converting to mp3" do
-            unless system(ffmpeg, "-loglevel", "quiet", "-i", videoname, "-ab", "320k",  filename)
+            #outext = `ffmpeg -i #{videoname} 2>&1`[/^ +Stream.+?: Audio: (.+?),/, 1]
+            outext = nil
+            basename = "#{i+1}_#{v.id}_#{v.title.gsub(/\//,"-")}.#{outext||"mp3"}"
+            filename = "#{output_dir}/#{basename}"
+
+            cmd = if outext
+                    [ffmpeg, "-loglevel", "quiet", "-i", videoname, "-acodec", "copy", filename]
+                  else
+                    [ffmpeg, "-loglevel", "quiet", "-i", videoname, "-ab", "320k", filename]
+                  end
+            unless system(*cmd)
               puts "<bold><red>=&gt;</red> <white>Failed...</white></bold>".termcolor
               exit 1
             end
@@ -237,7 +256,13 @@ class Nicoloid
           files.each do |f|
             FileUtils.remove_entry_secure f if File.exist?(f)
           end
-          raise e unless e.class == Interrupt
+          if e.class == Interrupt
+            puts
+            puts_progress("Interrupt."){}
+            exit
+          else
+            raise e
+          end
         else
           converted << v.id
           open(nicoloid_converted,"w") do |f|
