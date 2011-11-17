@@ -54,6 +54,7 @@ class Nicoloid
                    がくぽ
                    VY1
                    歌愛ユキ
+                   miki
                  )
     VOCALOIDS_ALIAS = {"Megpoid" => "GUMI",
                        "めぐっぽいど" => "GUMI",
@@ -71,7 +72,8 @@ class Nicoloid
                          "GUMI" => "Gumi",
                          "神威がくぽ" => "Kamui Gakupo",
                          "VY1" => "VY1",
-                         "歌愛ユキ" => "Kaai Yuki"}
+                         "歌愛ユキ" => "Kaai Yuki",
+                         "miki" => "miki"}
 
   class << self
     def puts_progress(str)
